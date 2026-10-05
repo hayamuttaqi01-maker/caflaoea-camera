@@ -124,6 +124,28 @@
       text-decoration: none;
       font-size: 14px;
     }
+
+    /* TAMBAHAN: PILIHAN KAMERA */
+    .camera-select-area {
+      margin-top: 14px;
+      display: flex;
+      gap: 10px;
+    }
+
+    .camera-select-area button {
+      background: #eef3ff;
+      color: #354052;
+      border: 1px solid #d7def0;
+    }
+
+    .camera-select-area button.active {
+      background: #5b8def;
+      color: white;
+    }
+
+    .camera-select-area button:disabled {
+      opacity: 0.45;
+    }
   </style>
 </head>
 
@@ -137,6 +159,25 @@
     </div>
 
     <div id="reader"></div>
+
+    <!-- TAMBAHAN: PILIH KAMERA -->
+    <div class="camera-select-area">
+
+      <button
+        id="backCameraButton"
+        onclick="selectCameraMode('back')"
+      >
+        🔙 Kamera Belakang
+      </button>
+
+      <button
+        id="frontCameraButton"
+        onclick="selectCameraMode('front')"
+      >
+        🤳 Kamera Depan
+      </button>
+
+    </div>
 
     <div class="button-area">
       <button id="startButton" onclick="startScanner()">
@@ -177,75 +218,457 @@
     let html5QrCode = null;
     let scannerRunning = false;
 
+    /* TAMBAHAN: DATA KAMERA */
+    let availableCameras = [];
+    let selectedCameraMode = "back";
+    let selectedCameraId = null;
+    let scanSent = false;
+
+
     const cameraStatus = document.getElementById("cameraStatus");
     const resultElement = document.getElementById("result");
 
-    function startScanner() {
+
+    /*
+     * PILIH MODE KAMERA
+     *
+     * HP:
+     * back  = kamera belakang
+     * front = kamera depan
+     *
+     * Laptop:
+     * akan otomatis menggunakan webcam
+     */
+    function selectCameraMode(mode) {
+
+      if (scannerRunning) {
+        cameraStatus.textContent =
+          "Hentikan kamera terlebih dahulu sebelum mengganti kamera.";
+
+        return;
+      }
+
+      selectedCameraMode = mode;
+
+      updateCameraButtons();
+
+      if (mode === "back") {
+
+        cameraStatus.textContent =
+          "Mode kamera belakang dipilih.";
+
+      } else {
+
+        cameraStatus.textContent =
+          "Mode kamera depan dipilih.";
+
+      }
+    }
+
+
+    function updateCameraButtons() {
+
+      const backButton =
+        document.getElementById("backCameraButton");
+
+      const frontButton =
+        document.getElementById("frontCameraButton");
+
+
+      backButton.classList.remove("active");
+      frontButton.classList.remove("active");
+
+
+      if (selectedCameraMode === "back") {
+
+        backButton.classList.add("active");
+
+      } else {
+
+        frontButton.classList.add("active");
+
+      }
+    }
+
+
+    /*
+     * MENCARI KAMERA YANG TERSEDIA
+     */
+    async function getAvailableCameras() {
+
+      try {
+
+        availableCameras =
+          await Html5Qrcode.getCameras();
+
+        return availableCameras || [];
+
+      } catch (error) {
+
+        console.error(
+          "Gagal mendapatkan daftar kamera:",
+          error
+        );
+
+        return [];
+
+      }
+
+    }
+
+
+    /*
+     * MEMILIH KAMERA BERDASARKAN LABEL
+     */
+    function findCameraByMode(mode) {
+
+      if (!availableCameras.length) {
+        return null;
+      }
+
+
+      const cameras =
+        availableCameras;
+
+
+      /*
+       * Kamera belakang biasanya mempunyai
+       * kata seperti:
+       *
+       * back
+       * rear
+       * environment
+       * world
+       */
+      if (mode === "back") {
+
+        const backCamera =
+          cameras.find(function(camera) {
+
+            const label =
+              String(camera.label || "").toLowerCase();
+
+            return (
+              label.includes("back") ||
+              label.includes("rear") ||
+              label.includes("environment") ||
+              label.includes("world")
+            );
+
+          });
+
+
+        if (backCamera) {
+          return backCamera.id;
+        }
+
+      }
+
+
+      /*
+       * Kamera depan biasanya mempunyai:
+       *
+       * front
+       * user
+       * facing
+       */
+      if (mode === "front") {
+
+        const frontCamera =
+          cameras.find(function(camera) {
+
+            const label =
+              String(camera.label || "").toLowerCase();
+
+            return (
+              label.includes("front") ||
+              label.includes("user") ||
+              label.includes("facing")
+            );
+
+          });
+
+
+        if (frontCamera) {
+          return frontCamera.id;
+        }
+
+      }
+
+
+      /*
+       * FALLBACK
+       *
+       * Kalau kamera yang dicari tidak ditemukan,
+       * gunakan kamera pertama yang tersedia.
+       *
+       * Ini penting untuk laptop/PC.
+       */
+      return cameras[0].id;
+
+    }
+
+
+    /*
+     * MEMBUKA KAMERA
+     */
+    async function startScanner() {
 
       if (scannerRunning) {
         return;
       }
 
-      cameraStatus.textContent = "Meminta izin kamera...";
 
-      html5QrCode = new Html5Qrcode("reader");
+      cameraStatus.textContent =
+        "Meminta izin kamera...";
 
-      const config = {
-        fps: 10,
-        qrbox: {
-          width: 250,
-          height: 250
-        },
-        aspectRatio: 1.0
-      };
 
-      html5QrCode
-        .start(
-          {
-            facingMode: {
-              exact: "environment"
-            }
+      resultElement.textContent =
+        "Menyiapkan kamera...";
+
+
+      scanSent = false;
+
+
+      try {
+
+        /*
+         * Bersihkan scanner lama jika ada.
+         */
+        if (html5QrCode) {
+
+          try {
+            await html5QrCode.stop();
+          } catch (e) {}
+
+          try {
+            await html5QrCode.clear();
+          } catch (e) {}
+
+          html5QrCode = null;
+
+        }
+
+
+        /*
+         * Cek apakah browser mendukung kamera.
+         */
+        if (
+          !navigator.mediaDevices ||
+          !navigator.mediaDevices.getUserMedia
+        ) {
+
+          throw new Error(
+            "Browser tidak mendukung akses kamera."
+          );
+
+        }
+
+
+        /*
+         * Buat scanner baru.
+         */
+        html5QrCode =
+          new Html5Qrcode("reader");
+
+
+        /*
+         * Minta daftar kamera.
+         */
+        availableCameras =
+          await getAvailableCameras();
+
+
+        /*
+         * Kalau kamera berhasil terdeteksi,
+         * gunakan ID kamera.
+         */
+        if (availableCameras.length > 0) {
+
+          selectedCameraId =
+            findCameraByMode(
+              selectedCameraMode
+            );
+
+        }
+
+
+        /*
+         * Ukuran QR menyesuaikan layar.
+         */
+        const qrSize =
+          Math.min(
+            250,
+            Math.max(
+              180,
+              Math.floor(
+                window.innerWidth * 0.65
+              )
+            )
+          );
+
+
+        const config = {
+
+          fps: 10,
+
+          qrbox: {
+            width: qrSize,
+            height: qrSize
           },
-          config,
-          onScanSuccess,
-          onScanFailure
-        )
-        .then(function () {
 
-          scannerRunning = true;
+          aspectRatio: 1.0,
 
-          cameraStatus.textContent =
-            "Kamera aktif. Arahkan kamera ke QR siswa.";
+          disableFlip: false
 
-          document.getElementById("startButton").disabled = true;
-          document.getElementById("stopButton").disabled = false;
+        };
 
-        })
-        .catch(function (error) {
 
-          console.error(error);
+        /*
+         * JIKA KAMERA ID TERSEDIA
+         *
+         * Ini digunakan agar laptop tidak
+         * dipaksa memakai environment.
+         */
+        if (selectedCameraId) {
 
-          cameraStatus.textContent =
-            "Kamera tidak dapat dibuka. Periksa izin kamera browser.";
+          await html5QrCode.start(
+            selectedCameraId,
+            config,
+            onScanSuccess,
+            onScanFailure
+          );
 
-          resultElement.textContent =
-            "Gagal membuka kamera: " + error;
+        } else {
 
-          document.getElementById("startButton").disabled = false;
-          document.getElementById("stopButton").disabled = true;
+          /*
+           * FALLBACK
+           *
+           * Tidak menggunakan:
+           *
+           * facingMode:
+           * {
+           *   exact: "environment"
+           * }
+           *
+           * sehingga OverconstrainedError
+           * dapat dihindari.
+           */
+          await html5QrCode.start(
+            {
+              facingMode: "environment"
+            },
+            config,
+            onScanSuccess,
+            onScanFailure
+          );
 
-        });
+        }
+
+
+        scannerRunning = true;
+
+
+        cameraStatus.textContent =
+          "Kamera aktif. Arahkan kamera ke QR siswa.";
+
+
+        resultElement.textContent =
+          "Belum ada QR yang dipindai.";
+
+
+        document.getElementById(
+          "startButton"
+        ).disabled = true;
+
+
+        document.getElementById(
+          "stopButton"
+        ).disabled = false;
+
+
+        document.getElementById(
+          "backCameraButton"
+        ).disabled = true;
+
+
+        document.getElementById(
+          "frontCameraButton"
+        ).disabled = true;
+
+      } catch (error) {
+
+        console.error(
+          "Gagal membuka kamera:",
+          error
+        );
+
+
+        scannerRunning = false;
+
+
+        cameraStatus.textContent =
+          "Kamera tidak dapat dibuka. Periksa izin kamera browser.";
+
+
+        resultElement.textContent =
+          "Gagal membuka kamera: " +
+          error;
+
+
+        document.getElementById(
+          "startButton"
+        ).disabled = false;
+
+
+        document.getElementById(
+          "stopButton"
+        ).disabled = true;
+
+
+        document.getElementById(
+          "backCameraButton"
+        ).disabled = false;
+
+
+        document.getElementById(
+          "frontCameraButton"
+        ).disabled = false;
+
+      }
+
     }
 
 
-    function onScanSuccess(decodedText, decodedResult) {
+    /*
+     * HASIL SCAN QR
+     */
+    function onScanSuccess(
+      decodedText,
+      decodedResult
+    ) {
 
-      console.log("QR berhasil dibaca:", decodedText);
+      if (scanSent) {
+        return;
+      }
 
-      resultElement.textContent = decodedText;
+
+      scanSent = true;
+
+
+      console.log(
+        "QR berhasil dibaca:",
+        decodedText
+      );
+
+
+      resultElement.textContent =
+        decodedText;
+
 
       cameraStatus.textContent =
         "QR berhasil dibaca.";
+
 
       /*
        * Format QR database CAFLAOEA:
@@ -256,12 +679,21 @@
        * CAFLAOEA|CAF0001|1000000001
        */
 
-      const parts = decodedText.split("|");
+      const parts =
+        decodedText.split("|");
 
-      if (parts.length >= 3 && parts[0] === "CAFLAOEA") {
 
-        const studentId = parts[1];
-        const nisn = parts[2];
+      if (
+        parts.length >= 3 &&
+        parts[0] === "CAFLAOEA"
+      ) {
+
+        const studentId =
+          parts[1];
+
+        const nisn =
+          parts[2];
+
 
         resultElement.innerHTML =
           "<strong>QR CAFLAOEA terdeteksi</strong><br><br>" +
@@ -279,75 +711,185 @@
 
       }
 
+
       /*
-       * Untuk sementara scanner tidak langsung ditutup.
-       * Kita akan menghubungkannya ke aplikasi utama
-       * setelah kamera terbukti berhasil.
+       * KIRIM HASIL QR KE APLIKASI UTAMA
+       *
+       * Aplikasi utama CAFLAOEA menerima:
+       *
+       * CAFLAOEA_QR_SCAN
        */
+      try {
+
+        if (
+          window.opener &&
+          !window.opener.closed
+        ) {
+
+          window.opener.postMessage(
+            {
+              type: "CAFLAOEA_QR_SCAN",
+              qrText: decodedText
+            },
+            "*"
+          );
+
+        }
+
+      } catch (error) {
+
+        console.error(
+          "Gagal mengirim hasil QR:",
+          error
+        );
+
+      }
+
+
+      /*
+       * Beri waktu agar hasil QR terlihat,
+       * kemudian kamera dihentikan.
+       */
+      setTimeout(
+        function() {
+          stopScanner();
+        },
+        500
+      );
+
     }
 
 
     function onScanFailure(error) {
+
       /*
        * Error kecil ketika QR belum ditemukan
        * sengaja tidak ditampilkan agar layar tidak penuh.
        */
+
     }
 
 
-    function stopScanner() {
+    /*
+     * MENGHENTIKAN KAMERA
+     */
+    async function stopScanner() {
 
-      if (!html5QrCode || !scannerRunning) {
+      if (
+        !html5QrCode ||
+        !scannerRunning
+      ) {
+
         return;
+
       }
 
-      html5QrCode
-        .stop()
-        .then(function () {
 
-          scannerRunning = false;
+      try {
 
-          cameraStatus.textContent =
-            "Kamera telah dihentikan.";
+        await html5QrCode.stop();
 
-          document.getElementById("startButton").disabled = false;
-          document.getElementById("stopButton").disabled = true;
+      } catch (error) {
 
-        })
-        .catch(function (error) {
+        console.error(
+          "Gagal menghentikan kamera:",
+          error
+        );
 
-          console.error("Gagal menghentikan kamera:", error);
+      }
 
-          cameraStatus.textContent =
-            "Kamera selesai digunakan.";
 
-          scannerRunning = false;
+      try {
 
-          document.getElementById("startButton").disabled = false;
-          document.getElementById("stopButton").disabled = true;
+        await html5QrCode.clear();
 
-        });
+      } catch (error) {}
+
+
+      scannerRunning = false;
+
+
+      cameraStatus.textContent =
+        "Kamera telah dihentikan.";
+
+
+      document.getElementById(
+        "startButton"
+      ).disabled = false;
+
+
+      document.getElementById(
+        "stopButton"
+      ).disabled = true;
+
+
+      document.getElementById(
+        "backCameraButton"
+      ).disabled = false;
+
+
+      document.getElementById(
+        "frontCameraButton"
+      ).disabled = false;
+
+
+      scanSent = false;
+
     }
 
 
     function escapeHtml(value) {
 
       return String(value)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+        .replace(
+          /&/g,
+          "&amp;"
+        )
+        .replace(
+          /</g,
+          "&lt;"
+        )
+        .replace(
+          />/g,
+          "&gt;"
+        )
+        .replace(
+          /"/g,
+          "&quot;"
+        )
+        .replace(
+          /'/g,
+          "&#039;"
+        );
+
     }
 
 
-    window.addEventListener("beforeunload", function () {
+    window.addEventListener(
+      "beforeunload",
+      function() {
 
-      if (html5QrCode && scannerRunning) {
-        html5QrCode.stop().catch(function () {});
+        if (
+          html5QrCode &&
+          scannerRunning
+        ) {
+
+          html5QrCode
+            .stop()
+            .catch(
+              function() {}
+            );
+
+        }
+
       }
+    );
 
-    });
+
+    /*
+     * MODE AWAL
+     */
+    updateCameraButtons();
 
   </script>
 
