@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>CAFLAOEA Camera QR</title>
+
+  <!-- Library QR Scanner -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #e8f7ff, #dff7f0, #eee8ff);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .camera-card {
+      width: 100%;
+      max-width: 480px;
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 24px;
+      padding: 22px;
+      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.12);
+    }
+
+    .title {
+      text-align: center;
+      margin-bottom: 18px;
+    }
+
+    .title h1 {
+      margin: 0;
+      font-size: 24px;
+      color: #354052;
+    }
+
+    .title p {
+      margin: 8px 0 0;
+      color: #6b7280;
+      font-size: 14px;
+    }
+
+    #reader {
+      width: 100%;
+      overflow: hidden;
+      border-radius: 18px;
+      background: #111;
+    }
+
+    .button-area {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    button {
+      flex: 1;
+      border: 0;
+      border-radius: 14px;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #startButton {
+      background: #5b8def;
+      color: white;
+    }
+
+    #stopButton {
+      background: #ef6b73;
+      color: white;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .result-box {
+      margin-top: 18px;
+      padding: 15px;
+      border-radius: 15px;
+      background: #f5f7fa;
+    }
+
+    .result-title {
+      font-weight: bold;
+      color: #354052;
+      margin-bottom: 8px;
+    }
+
+    #result {
+      word-break: break-word;
+      color: #374151;
+      font-size: 14px;
+      min-height: 20px;
+    }
+
+    .status {
+      text-align: center;
+      margin-top: 12px;
+      font-size: 13px;
+      color: #6b7280;
+    }
+
+    .back-link {
+      display: block;
+      text-align: center;
+      margin-top: 18px;
+      color: #5b8def;
+      text-decoration: none;
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="camera-card">
+
+    <div class="title">
+      <h1>📷 CAFLAOEA QR Scanner</h1>
+      <p>Scanner kamera untuk ABSENSI SISWA CAFLAOEA</p>
+    </div>
+
+    <div id="reader"></div>
+
+    <div class="button-area">
+      <button id="startButton" onclick="startScanner()">
+        📷 Buka Kamera
+      </button>
+
+      <button id="stopButton" onclick="stopScanner()" disabled>
+        ⛔ Stop
+      </button>
+    </div>
+
+    <div class="status" id="cameraStatus">
+      Kamera belum diaktifkan.
+    </div>
+
+    <div class="result-box">
+      <div class="result-title">
+        Hasil QR
+      </div>
+
+      <div id="result">
+        Belum ada QR yang dipindai.
+      </div>
+    </div>
+
+    <a
+      class="back-link"
+      href="https://hayamuttaqi01-maker.github.io/caflaoea-camera/"
+    >
+      🔄 Muat ulang halaman
+    </a>
+
+  </div>
+
+
+  <script>
+
+    let html5QrCode = null;
+    let scannerRunning = false;
+
+    const cameraStatus = document.getElementById("cameraStatus");
+    const resultElement = document.getElementById("result");
+
+    function startScanner() {
+
+      if (scannerRunning) {
+        return;
+      }
+
+      cameraStatus.textContent = "Meminta izin kamera...";
+
+      html5QrCode = new Html5Qrcode("reader");
+
+      const config = {
+        fps: 10,
+        qrbox: {
+          width: 250,
+          height: 250
+        },
+        aspectRatio: 1.0
+      };
+
+      html5QrCode
+        .start(
+          {
+            facingMode: {
+              exact: "environment"
+            }
+          },
+          config,
+          onScanSuccess,
+          onScanFailure
+        )
+        .then(function () {
+
+          scannerRunning = true;
+
+          cameraStatus.textContent =
+            "Kamera aktif. Arahkan kamera ke QR siswa.";
+
+          document.getElementById("startButton").disabled = true;
+          document.getElementById("stopButton").disabled = false;
+
+        })
+        .catch(function (error) {
+
+          console.error(error);
+
+          cameraStatus.textContent =
+            "Kamera tidak dapat dibuka. Periksa izin kamera browser.";
+
+          resultElement.textContent =
+            "Gagal membuka kamera: " + error;
+
+          document.getElementById("startButton").disabled = false;
+          document.getElementById("stopButton").disabled = true;
+
+        });
+    }
+
+
+    function onScanSuccess(decodedText, decodedResult) {
+
+      console.log("QR berhasil dibaca:", decodedText);
+
+      resultElement.textContent = decodedText;
+
+      cameraStatus.textContent =
+        "QR berhasil dibaca.";
+
+      /*
+       * Format QR database CAFLAOEA:
+       *
+       * CAFLAOEA|StudentID|NISN
+       *
+       * Contoh:
+       * CAFLAOEA|CAF0001|1000000001
+       */
+
+      const parts = decodedText.split("|");
+
+      if (parts.length >= 3 && parts[0] === "CAFLAOEA") {
+
+        const studentId = parts[1];
+        const nisn = parts[2];
+
+        resultElement.innerHTML =
+          "<strong>QR CAFLAOEA terdeteksi</strong><br><br>" +
+          "StudentID: " +
+          escapeHtml(studentId) +
+          "<br>" +
+          "NISN: " +
+          escapeHtml(nisn);
+
+      } else {
+
+        resultElement.innerHTML =
+          "<strong>QR terbaca</strong><br><br>" +
+          escapeHtml(decodedText);
+
+      }
+
+      /*
+       * Untuk sementara scanner tidak langsung ditutup.
+       * Kita akan menghubungkannya ke aplikasi utama
+       * setelah kamera terbukti berhasil.
+       */
+    }
+
+
+    function onScanFailure(error) {
+      /*
+       * Error kecil ketika QR belum ditemukan
+       * sengaja tidak ditampilkan agar layar tidak penuh.
+       */
+    }
+
+
+    function stopScanner() {
+
+      if (!html5QrCode || !scannerRunning) {
+        return;
+      }
+
+      html5QrCode
+        .stop()
+        .then(function () {
+
+          scannerRunning = false;
+
+          cameraStatus.textContent =
+            "Kamera telah dihentikan.";
+
+          document.getElementById("startButton").disabled = false;
+          document.getElementById("stopButton").disabled = true;
+
+        })
+        .catch(function (error) {
+
+          console.error("Gagal menghentikan kamera:", error);
+
+          cameraStatus.textContent =
+            "Kamera selesai digunakan.";
+
+          scannerRunning = false;
+
+          document.getElementById("startButton").disabled = false;
+          document.getElementById("stopButton").disabled = true;
+
+        });
+    }
+
+
+    function escapeHtml(value) {
+
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+
+    window.addEventListener("beforeunload", function () {
+
+      if (html5QrCode && scannerRunning) {
+        html5QrCode.stop().catch(function () {});
+      }
+
+    });
+
+  </script>
+
+</body>
+</html>
